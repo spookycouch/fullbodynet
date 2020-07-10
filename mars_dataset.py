@@ -83,6 +83,7 @@ class Mars(torch.utils.data.Dataset):
 
 if __name__ == '__main__':
     mars = Mars('./.data')
+    print(len(mars))
     print(mars[0][1])
     print(mars[1][1])
     print(mars[2][1])

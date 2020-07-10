@@ -1,7 +1,7 @@
 import torch
 
 # loss function
-def triplet_loss(anc, pos, neg, margin=1):
+def triplet_loss(anc, pos, neg, margin=0.1):
     ap_dist = torch.norm(anc - pos, dim=1)
     an_dist = torch.norm(anc - neg, dim=1)
     relu = torch.nn.ReLU()
@@ -11,7 +11,7 @@ def triplet_loss(anc, pos, neg, margin=1):
 
 
 # return the total count of valid triplets in a batch
-def total_triplets_valid(anc, pos, neg, margin=1):
+def total_triplets_valid(anc, pos, neg, margin=0.1):
     ap_dist = torch.norm(anc - pos, dim=1)
     an_dist = torch.norm(anc - neg, dim=1)
     bits = ap_dist < an_dist
@@ -19,7 +19,7 @@ def total_triplets_valid(anc, pos, neg, margin=1):
 
 
 # return the indices of invalid triplets in a batch
-def invalid_triplet_indices(anc, pos, neg, margin=1):
+def invalid_triplet_indices(anc, pos, neg, margin=0.1):
     ap_dist = torch.norm(anc - pos, dim=1)
     an_dist = torch.norm(anc - neg, dim=1)
     bits = ap_dist > an_dist
