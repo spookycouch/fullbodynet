@@ -32,21 +32,20 @@ def imagenet_transform():
 
 # train all inception layers
 def full_body_net_optimiser(net, lr, momentum):
-    # return torch.optim.SGD([
-    #     {'params':net.inception_v3.fc.parameters(),       'lr':lr, 'momentum':momentum},
-    #     {'params':net.inception_v3.Mixed_7a.parameters(), 'lr':lr, 'momentum':momentum},
-    #     {'params':net.inception_v3.Mixed_7b.parameters(), 'lr':lr, 'momentum':momentum},
-    #     {'params':net.inception_v3.Mixed_7c.parameters(), 'lr':lr, 'momentum':momentum},
-    #     {'params':net.inception_v3.Mixed_6a.parameters(), 'lr':lr, 'momentum':momentum},
-    #     {'params':net.inception_v3.Mixed_6b.parameters(), 'lr':lr, 'momentum':momentum},
-    #     {'params':net.inception_v3.Mixed_6c.parameters(), 'lr':lr, 'momentum':momentum},
-    #     {'params':net.inception_v3.Mixed_6d.parameters(), 'lr':lr, 'momentum':momentum},
-    #     {'params':net.inception_v3.Mixed_6e.parameters(), 'lr':lr, 'momentum':momentum},
-    #     {'params':net.inception_v3.Mixed_5b.parameters(), 'lr':lr, 'momentum':momentum},
-    #     {'params':net.inception_v3.Mixed_5c.parameters(), 'lr':lr, 'momentum':momentum},
-    #     {'params':net.inception_v3.Mixed_5d.parameters(), 'lr':lr, 'momentum':momentum},
-    #     ])
-    return torch.optim.SGD(net.parameters(), lr=lr, momentum=momentum)
+    return torch.optim.SGD([
+        {'params':net.inception_v3.fc.parameters(),       'lr':lr, 'momentum':momentum},
+        {'params':net.inception_v3.Mixed_7a.parameters(), 'lr':lr, 'momentum':momentum},
+        {'params':net.inception_v3.Mixed_7b.parameters(), 'lr':lr, 'momentum':momentum},
+        {'params':net.inception_v3.Mixed_7c.parameters(), 'lr':lr, 'momentum':momentum},
+        {'params':net.inception_v3.Mixed_6a.parameters(), 'lr':lr, 'momentum':momentum},
+        {'params':net.inception_v3.Mixed_6b.parameters(), 'lr':lr, 'momentum':momentum},
+        {'params':net.inception_v3.Mixed_6c.parameters(), 'lr':lr, 'momentum':momentum},
+        {'params':net.inception_v3.Mixed_6d.parameters(), 'lr':lr, 'momentum':momentum},
+        {'params':net.inception_v3.Mixed_6e.parameters(), 'lr':lr, 'momentum':momentum},
+        {'params':net.inception_v3.Mixed_5b.parameters(), 'lr':lr, 'momentum':momentum},
+        {'params':net.inception_v3.Mixed_5c.parameters(), 'lr':lr, 'momentum':momentum},
+        {'params':net.inception_v3.Mixed_5d.parameters(), 'lr':lr, 'momentum':momentum},
+        ])
 
 def train(max_iters, batch_size, minibatch_size, lr, momentum, statepath=None, logpath=None):
 
@@ -135,7 +134,7 @@ def train(max_iters, batch_size, minibatch_size, lr, momentum, statepath=None, l
                 mbatches_processed +=1 
 
                 # output every tenth of a batch
-                if mbatches_processed % int((batch_size/minibatch_size)/10) == 0:
+                if mbatches_processed % max(1, int((batch_size/minibatch_size)/10)) == 0:
                     print('\taccumulated loss: %.6f' % (running_loss / (mbatches_processed * minibatch_size)))
                     show_triplet('invalid triplet', anc[0], pos[0], neg[0])
 
@@ -198,9 +197,9 @@ def train(max_iters, batch_size, minibatch_size, lr, momentum, statepath=None, l
                         train_history.append(train_accuracy)
                         loss_history.append(current_loss)
                     
-                    # checkpoint model every 40 iterations
+                    # checkpoint model every 200 iterations
                     # (approx 1h at minibatch_size=8)
-                    if iteration % 40 == 0:
+                    if iteration % 200 == 0:
                         torch.save(net.state_dict(), './mars_triplet_ckpt.pth'.format(iteration))
                         with open('./mars_triplet_ckpt.log', 'w') as f:
                             f.write(str(iteration))
@@ -215,8 +214,8 @@ def train(max_iters, batch_size, minibatch_size, lr, momentum, statepath=None, l
                         print('Model saved to ./mars_triplet_ckpt.pth')
                         print('Metadata saved to ./mars_triplet_ckpt.log')
                     
-                    # save model every 500 iters
-                    if iteration % 500 == 0:
+                    # save model every 2000 iters
+                    if iteration % 2000 == 0:
                         torch.save(net.state_dict(), './mars_triplet_{}.pth'.format(iteration))
                         print('Model saved to ./mars_triplet_{}.pth'.format(iteration))
 
@@ -228,10 +227,11 @@ def train(max_iters, batch_size, minibatch_size, lr, momentum, statepath=None, l
 if __name__ == '__main__':
     # hyperparams
     max_iters = 100000
-    batch_size = 1024
+    batch_size = 128
     minibatch_size = 8
     lr = 0.001
     momentum = 0.9
 
     # train
-    train(max_iters, batch_size, minibatch_size, lr, momentum, './mars_triplet_ckpt.pth', './mars_triplet_ckpt.log')
+    # train(max_iters, batch_size, minibatch_size, lr, momentum, './mars_triplet_ckpt.pth', './mars_triplet_ckpt.log')
+    train(max_iters, batch_size, minibatch_size, lr, momentum)

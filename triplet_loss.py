@@ -14,7 +14,7 @@ def triplet_loss(anc, pos, neg, margin=0.1):
 def total_triplets_valid(anc, pos, neg, margin=0.1):
     ap_dist = torch.norm(anc - pos, dim=1)
     an_dist = torch.norm(anc - neg, dim=1)
-    bits = ap_dist < an_dist
+    bits = ap_dist + margin < an_dist
     return torch.sum(bits)
 
 
@@ -22,5 +22,5 @@ def total_triplets_valid(anc, pos, neg, margin=0.1):
 def invalid_triplet_indices(anc, pos, neg, margin=0.1):
     ap_dist = torch.norm(anc - pos, dim=1)
     an_dist = torch.norm(anc - neg, dim=1)
-    bits = ap_dist > an_dist
+    bits = ap_dist + margin > an_dist
     return bits.nonzero()
