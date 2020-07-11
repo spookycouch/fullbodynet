@@ -45,6 +45,11 @@ class Mars(torch.utils.data.Dataset):
 
         # split the images into triplets
         for classname in images:
+
+            count = 0
+            triplets_out = []
+            labels_out = []
+
             for filename in images[classname]:
                 # choose random class for negative
                 pos_class = classname
@@ -63,8 +68,18 @@ class Mars(torch.utils.data.Dataset):
                     while pos == filename:
                         pos = random.choice(images[pos_class])
             
-                self.triplets.append((anchor, pos, neg))
-                self.labels.append((pos_class, pos_class, neg_class))
+                triplets_out.append((anchor, pos, neg))
+                labels_out.append((pos_class, pos_class, neg_class))
+                count += 1
+
+                if count == 4:
+                    self.triplets.append(triplets_out)
+                    self.labels.append(labels_out)
+
+                    count = 0
+                    triplets_out = []
+                    labels_out = []
+
 
 
     def __len__(self):
@@ -72,14 +87,23 @@ class Mars(torch.utils.data.Dataset):
 
 
     def __getitem__(self, index):
-        anchor, pos, neg = self.triplets[index]
-        triplet = (Image.open(anchor), Image.open(pos), Image.open(neg))
-        
-        if self.transform is not None:
-            triplet = [self.transform(img) for img in triplet]
-        
-        return triplet, self.labels[index]
+        triplets_out = []
+        labels_out = []
 
+        for triplet in self.triplets[index]:
+            anchor, pos, neg = triplet
+            triplet = (Image.open(anchor), Image.open(pos), Image.open(neg))
+            
+            if self.transform is not None:
+                triplet = [self.transform(img) for img in triplet]
+            
+            triplets_out.append(triplet)
+            
+        
+        for label in self.labels[index]:
+            labels_out.append(label)
+
+        return triplets_out, labels_out
 
 if __name__ == '__main__':
     mars = Mars('./.data')
@@ -89,8 +113,4 @@ if __name__ == '__main__':
     print(mars[2][1])
     print(mars[3][1])
     print(mars[4][1])
-    mars[0][0][0].show()
-    # mars[1][0][0].show()
-    # mars[2][0][0].show()
-    # mars[3][0][0].show()
-    # mars[4][0][0].show()
+    mars[0][0][0][0].show()

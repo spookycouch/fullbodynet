@@ -47,21 +47,21 @@ def full_body_net_optimiser(net, lr, momentum):
         {'params':net.inception_v3.Mixed_5d.parameters(), 'lr':lr, 'momentum':momentum},
         ])
 
-def train(max_iters, batch_size, minibatch_size, lr, momentum, statepath=None, logpath=None):
+def train(max_iters, batch_size, minibatch_size, images_per_person, lr, momentum, statepath=None, logpath=None):
 
     # use GPU if avail
     if torch.cuda.is_available():
         device = 'cuda:1'
     else:
         device = 'cpu'
-    
 
     # load dataset
+    persons_per_batch = max(1, int(minibatch_size/images_per_person))
     transform = imagenet_transform()
     trainset = Mars(root='./.data', train=True, transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=minibatch_size, shuffle=True, num_workers=2)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=persons_per_batch, shuffle=True, num_workers=2)
     testset = Mars(root='./.data', train=False, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=minibatch_size, shuffle=True, num_workers=2)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=persons_per_batch, shuffle=True, num_workers=2)
 
 
     # inception_v3
@@ -82,6 +82,8 @@ def train(max_iters, batch_size, minibatch_size, lr, momentum, statepath=None, l
     # loop variables
     if logpath is None:
         iteration = 0
+        with open('./mars_triplet_ckpt.log', 'w') as f:
+            f.write('')
     else:
         print('Loading FullBodyNet metadata from {}'.format(logpath))
         with open(logpath, 'r') as f:
@@ -91,10 +93,6 @@ def train(max_iters, batch_size, minibatch_size, lr, momentum, statepath=None, l
     minibatch_queue = Queue()
     mbatches_processed = 0
 
-    val_history   = []
-    train_history = []
-    loss_history  = []
-    
     # train the thing
     while iteration < max_iters:
         for data in trainloader:
@@ -102,14 +100,15 @@ def train(max_iters, batch_size, minibatch_size, lr, momentum, statepath=None, l
             # ONLINE TRIPLET SELECTION
             # get all of the semi-hard triplets here to make a minibatch
             with torch.no_grad():
-                anc, pos, neg = data[0]
-                anc, pos, neg = anc.to(device), pos.to(device), neg.to(device)
-                anc_outputs, pos_outputs, neg_outputs = net(anc)[0], net(pos)[0], net(neg)[0]
+                for person in data[0]:
+                    anc, pos, neg = person
+                    anc, pos, neg = anc.to(device), pos.to(device), neg.to(device)
+                    anc_outputs, pos_outputs, neg_outputs = net(anc)[0], net(pos)[0], net(neg)[0]
 
-                # add triplets that violate the loss fn to the minibatch
-                indices = invalid_triplet_indices(anc_outputs, pos_outputs, neg_outputs).flatten().tolist()
-                for index in indices:
-                    minibatch_queue.put((anc[index], pos[index], neg[index]))
+                    # add triplets that violate the loss fn to the minibatch
+                    indices = invalid_triplet_indices(anc_outputs, pos_outputs, neg_outputs).flatten().tolist()
+                    for index in indices:
+                        minibatch_queue.put((anc[index], pos[index], neg[index]))
 
                 # correct = total_triplets_valid(anc_outputs, pos_outputs, neg_outputs).item()
                 # print (minibatch_size - correct, minibatch_queue.qsize())
@@ -131,12 +130,11 @@ def train(max_iters, batch_size, minibatch_size, lr, momentum, statepath=None, l
                 loss = triplet_loss(anc_outputs, pos_outputs, neg_outputs)
                 loss.backward()
                 running_loss += loss.item()
-                mbatches_processed +=1 
+                mbatches_processed +=1
 
                 # output every tenth of a batch
                 if mbatches_processed % max(1, int((batch_size/minibatch_size)/10)) == 0:
                     print('\taccumulated loss: %.6f' % (running_loss / (mbatches_processed * minibatch_size)))
-                    show_triplet('invalid triplet', anc[0], pos[0], neg[0])
 
                 # optimise at batch size
                 if mbatches_processed >= batch_size/minibatch_size:
@@ -151,21 +149,23 @@ def train(max_iters, batch_size, minibatch_size, lr, momentum, statepath=None, l
 
                     # print current loss
                     print('[%d] batch loss: %.6f' % (iteration, current_loss))
+                    show_triplet('invalid triplet', anc[0], pos[0], neg[0])
                     
-                    # validate every 100 iters
-                    if iteration % 10 == 0:
+                    # validate every 50 iters
+                    if iteration % 50 == 0:
                         no_test = 500
                         correct = 0
                         total = 0
 
                         with torch.no_grad():
                             for j, data in enumerate(testloader):
-                                anc, pos, neg = data[0]
-                                anc, pos, neg = anc.to(device), pos.to(device), neg.to(device)
-                                anc_outputs, pos_outputs, neg_outputs = net(anc)[0], net(pos)[0], net(neg)[0]
+                                for person in data[0]:
+                                    anc, pos, neg = person
+                                    anc, pos, neg = anc.to(device), pos.to(device), neg.to(device)
+                                    anc_outputs, pos_outputs, neg_outputs = net(anc)[0], net(pos)[0], net(neg)[0]
 
-                                correct += total_triplets_valid(anc_outputs, pos_outputs, neg_outputs).item()
-                                total += anc.size(0)
+                                    correct += total_triplets_valid(anc_outputs, pos_outputs, neg_outputs).item()
+                                    total += anc.size(0)
 
                                 if j == int(no_test/minibatch_size):
                                     break
@@ -178,40 +178,30 @@ def train(max_iters, batch_size, minibatch_size, lr, momentum, statepath=None, l
 
                         with torch.no_grad():
                             for j, data in enumerate(trainloader):
-                                anc, pos, neg = data[0]
-                                anc, pos, neg = anc.to(device), pos.to(device), neg.to(device)
-                                anc_outputs, pos_outputs, neg_outputs = net(anc)[0], net(pos)[0], net(neg)[0]
+                                for person in data[0]:
+                                    anc, pos, neg = person
+                                    anc, pos, neg = anc.to(device), pos.to(device), neg.to(device)
+                                    anc_outputs, pos_outputs, neg_outputs = net(anc)[0], net(pos)[0], net(neg)[0]
 
-                                correct += total_triplets_valid(anc_outputs, pos_outputs, neg_outputs).item()
-                                total += anc.size(0)
+                                    correct += total_triplets_valid(anc_outputs, pos_outputs, neg_outputs).item()
+                                    total += anc.size(0)
 
                                 if j == int(no_test/minibatch_size):
                                     break
                         
                         train_accuracy = 100 * correct / total
                         print('Accuracy on first {} train triplets: {}'.format(no_test, train_accuracy))
-
-                    # add to history for log
-                    if iteration % 200 == 0:
-                        val_history.append(val_accuracy)
-                        train_history.append(train_accuracy)
-                        loss_history.append(current_loss)
                     
-                    # checkpoint model every 200 iterations
-                    # (approx 1h at minibatch_size=8)
-                    if iteration % 200 == 0:
+                    # checkpoint model every 400 iterations
+                    if iteration % 400 == 0:
                         torch.save(net.state_dict(), './mars_triplet_ckpt.pth'.format(iteration))
-                        with open('./mars_triplet_ckpt.log', 'w') as f:
-                            f.write(str(iteration))
-                            f.write('\n')
-                            f.write(str(val_history))
-                            f.write('\n')
-                            f.write(str(train_history))
-                            f.write('\n')
-                            f.write(str(loss_history))
-                            f.write('\n')
-
                         print('Model saved to ./mars_triplet_ckpt.pth')
+
+                        with open('./mars_triplet_ckpt.log', 'w') as f:
+                            f.write(str(iteration) + '\n')
+                            f.write(str(val_accuracy) + '\n')
+                            f.write(str(train_accuracy) + '\n')
+                            f.write(str(current_loss) + '\n')
                         print('Metadata saved to ./mars_triplet_ckpt.log')
                     
                     # save model every 2000 iters
@@ -227,11 +217,12 @@ def train(max_iters, batch_size, minibatch_size, lr, momentum, statepath=None, l
 if __name__ == '__main__':
     # hyperparams
     max_iters = 100000
-    batch_size = 128
+    batch_size = 72
     minibatch_size = 8
+    images_per_person = 4
     lr = 0.001
     momentum = 0.9
 
     # train
-    # train(max_iters, batch_size, minibatch_size, lr, momentum, './mars_triplet_ckpt.pth', './mars_triplet_ckpt.log')
-    train(max_iters, batch_size, minibatch_size, lr, momentum)
+    train(max_iters, batch_size, minibatch_size, lr, momentum, './mars_triplet_ckpt.pth', './mars_triplet_ckpt.log')
+    # train(max_iters, batch_size, minibatch_size, images_per_person, lr, momentum)
