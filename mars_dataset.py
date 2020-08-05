@@ -5,7 +5,7 @@ import os
 import random
 
 class Mars(torch.utils.data.Dataset):
-    def __init__(self, root, train=True, transform=None, seed=10):
+    def __init__(self, root, train=True, transform=None, images_per_person=4, triplets_per_image=1, seed=10):
         self.triplets = []
         self.labels = []
         self.transform = transform
@@ -32,7 +32,8 @@ class Mars(torch.utils.data.Dataset):
 
                     for filename in os.listdir(set_dir):
                         file_path = '{}/{}'.format(set_dir, filename)
-                        classname = (int(filename[filename.find('T') + 1 : filename.find('F')]))
+                        # classname = dirname + filename[filename.find('T') + 1 : filename.find('F')]
+                        classname = filename[:filename.find('F')]
 
                         if not classname in images:
                             images[classname] = []
@@ -51,34 +52,35 @@ class Mars(torch.utils.data.Dataset):
             labels_out = []
 
             for filename in images[classname]:
-                # choose random class for negative
-                pos_class = classname
-                neg_class = pos_class
+                for i in range(triplets_per_image):
+                    # choose random class for negative
+                    pos_class = classname
+                    neg_class = pos_class
 
-                if len(keys) > 1:
-                    while neg_class == pos_class:
-                        neg_class = random.choice(keys)
+                    if len(keys) > 1:
+                        while neg_class == pos_class:
+                            neg_class = random.choice(keys)
+                    
+                    # choose random pos/neg examples
+                    anchor = filename
+                    pos = filename
+                    neg = random.choice(images[neg_class])
+
+                    if len(images[pos_class]) > 1:
+                        while pos == filename:
+                            pos = random.choice(images[pos_class])
                 
-                # choose random pos/neg examples
-                anchor = filename
-                pos = filename
-                neg = random.choice(images[neg_class])
+                    triplets_out.append((anchor, pos, neg))
+                    labels_out.append((pos_class, pos_class, neg_class))
+                    count += 1
 
-                if len(images[pos_class]) > 1:
-                    while pos == filename:
-                        pos = random.choice(images[pos_class])
-            
-                triplets_out.append((anchor, pos, neg))
-                labels_out.append((pos_class, pos_class, neg_class))
-                count += 1
+                    if count == images_per_person:
+                        self.triplets.append(triplets_out)
+                        self.labels.append(labels_out)
 
-                if count == 4:
-                    self.triplets.append(triplets_out)
-                    self.labels.append(labels_out)
-
-                    count = 0
-                    triplets_out = []
-                    labels_out = []
+                        count = 0
+                        triplets_out = []
+                        labels_out = []
 
 
 
@@ -114,3 +116,7 @@ if __name__ == '__main__':
     print(mars[3][1])
     print(mars[4][1])
     mars[0][0][0][0].show()
+
+    trainset = Mars(root='./.data', train=True, triplets_per_image=16)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=2, shuffle=True, num_workers=2)
+    print(len(trainloader))
