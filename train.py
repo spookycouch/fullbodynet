@@ -30,21 +30,11 @@ def imagenet_transform():
     ])
 
 
-# train all inception layers
+# train the final residual
 def full_body_net_optimiser(net, lr, momentum):
     return torch.optim.SGD([
-        {'params':net.inception_v3.fc.parameters(),       'lr':lr, 'momentum':momentum},
-        {'params':net.inception_v3.Mixed_7a.parameters(), 'lr':lr, 'momentum':momentum},
-        {'params':net.inception_v3.Mixed_7b.parameters(), 'lr':lr, 'momentum':momentum},
-        {'params':net.inception_v3.Mixed_7c.parameters(), 'lr':lr, 'momentum':momentum},
-        {'params':net.inception_v3.Mixed_6a.parameters(), 'lr':lr, 'momentum':momentum},
-        {'params':net.inception_v3.Mixed_6b.parameters(), 'lr':lr, 'momentum':momentum},
-        {'params':net.inception_v3.Mixed_6c.parameters(), 'lr':lr, 'momentum':momentum},
-        {'params':net.inception_v3.Mixed_6d.parameters(), 'lr':lr, 'momentum':momentum},
-        {'params':net.inception_v3.Mixed_6e.parameters(), 'lr':lr, 'momentum':momentum},
-        {'params':net.inception_v3.Mixed_5b.parameters(), 'lr':lr, 'momentum':momentum},
-        {'params':net.inception_v3.Mixed_5c.parameters(), 'lr':lr, 'momentum':momentum},
-        {'params':net.inception_v3.Mixed_5d.parameters(), 'lr':lr, 'momentum':momentum},
+        {'params':net.resnet50.fc.parameters(),       'lr':lr, 'momentum':momentum},
+        {'params':net.resnet50.layer4.parameters(), 'lr':lr, 'momentum':momentum},
         ])
 
 def train(max_iters, batch_size, minibatch_size, images_per_person, lr, momentum, statepath=None, logpath=None):
@@ -58,7 +48,7 @@ def train(max_iters, batch_size, minibatch_size, images_per_person, lr, momentum
     # load dataset
     persons_per_batch = max(1, int(minibatch_size/images_per_person))
     transform = imagenet_transform()
-    trainset = Mars(root='./.data', train=True, transform=transform)
+    trainset = Mars(root='./.data', train=True, transform=transform, triplets_per_image=16)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=persons_per_batch, shuffle=True, num_workers=2)
     testset = Mars(root='./.data', train=False, transform=transform)
     testloader = torch.utils.data.DataLoader(testset, batch_size=persons_per_batch, shuffle=True, num_workers=2)
@@ -87,7 +77,15 @@ def train(max_iters, batch_size, minibatch_size, images_per_person, lr, momentum
     else:
         print('Loading FullBodyNet metadata from {}'.format(logpath))
         with open(logpath, 'r') as f:
-            iteration = int(f.readline())
+            while 1:
+                line = f.readline()
+                if line == '':
+                    break
+                
+                iteration = int(line)
+                f.readline()
+                f.readline()
+                f.readline()
     
     running_loss = 0.0
     minibatch_queue = Queue()
@@ -103,7 +101,7 @@ def train(max_iters, batch_size, minibatch_size, images_per_person, lr, momentum
                 for person in data[0]:
                     anc, pos, neg = person
                     anc, pos, neg = anc.to(device), pos.to(device), neg.to(device)
-                    anc_outputs, pos_outputs, neg_outputs = net(anc)[0], net(pos)[0], net(neg)[0]
+                    anc_outputs, pos_outputs, neg_outputs = net(anc), net(pos), net(neg)
 
                     # add triplets that violate the loss fn to the minibatch
                     indices = invalid_triplet_indices(anc_outputs, pos_outputs, neg_outputs).flatten().tolist()
@@ -124,7 +122,7 @@ def train(max_iters, batch_size, minibatch_size, images_per_person, lr, momentum
                     neg.append(neg_img)
 
                 anc, pos, neg = torch.stack(anc), torch.stack(pos), torch.stack(neg)
-                anc_outputs, pos_outputs, neg_outputs = net(anc)[0], net(pos)[0], net(neg)[0]
+                anc_outputs, pos_outputs, neg_outputs = net(anc), net(pos), net(neg)
 
                 # forward + backward
                 loss = triplet_loss(anc_outputs, pos_outputs, neg_outputs)
@@ -153,16 +151,16 @@ def train(max_iters, batch_size, minibatch_size, images_per_person, lr, momentum
                     
                     # validate every 50 iters
                     if iteration % 50 == 0:
-                        no_test = 500
-                        correct = 0
-                        total = 0
+                        no_test = 1000
+                        correct = 0.0
+                        total = 0.0
 
                         with torch.no_grad():
                             for j, data in enumerate(testloader):
                                 for person in data[0]:
                                     anc, pos, neg = person
                                     anc, pos, neg = anc.to(device), pos.to(device), neg.to(device)
-                                    anc_outputs, pos_outputs, neg_outputs = net(anc)[0], net(pos)[0], net(neg)[0]
+                                    anc_outputs, pos_outputs, neg_outputs = net(anc), net(pos), net(neg)
 
                                     correct += total_triplets_valid(anc_outputs, pos_outputs, neg_outputs).item()
                                     total += anc.size(0)
@@ -173,15 +171,15 @@ def train(max_iters, batch_size, minibatch_size, images_per_person, lr, momentum
                         val_accuracy = 100 * correct / total
                         print('Accuracy on first {} validation triplets: {}'.format(no_test, val_accuracy))
 
-                        correct = 0
-                        total = 0
+                        correct = 0.0
+                        total = 0.0
 
                         with torch.no_grad():
                             for j, data in enumerate(trainloader):
                                 for person in data[0]:
                                     anc, pos, neg = person
                                     anc, pos, neg = anc.to(device), pos.to(device), neg.to(device)
-                                    anc_outputs, pos_outputs, neg_outputs = net(anc)[0], net(pos)[0], net(neg)[0]
+                                    anc_outputs, pos_outputs, neg_outputs = net(anc), net(pos), net(neg)
 
                                     correct += total_triplets_valid(anc_outputs, pos_outputs, neg_outputs).item()
                                     total += anc.size(0)
@@ -192,8 +190,8 @@ def train(max_iters, batch_size, minibatch_size, images_per_person, lr, momentum
                         train_accuracy = 100 * correct / total
                         print('Accuracy on first {} train triplets: {}'.format(no_test, train_accuracy))
                     
-                    # checkpoint model every 400 iterations
-                    if iteration % 400 == 0:
+                    # checkpoint model every 100 iterations
+                    if iteration > 500 and iteration % 100 == 0:
                         torch.save(net.state_dict(), './mars_triplet_ckpt.pth'.format(iteration))
                         print('Model saved to ./mars_triplet_ckpt.pth')
 
@@ -204,19 +202,16 @@ def train(max_iters, batch_size, minibatch_size, images_per_person, lr, momentum
                             f.write(str(current_loss) + '\n')
                         print('Metadata saved to ./mars_triplet_ckpt.log')
                     
-                    # save model every 2000 iters
-                    if iteration % 2000 == 0:
+                    # save model every 500 iters
+                    if iteration % 500 == 0:
                         torch.save(net.state_dict(), './mars_triplet_{}.pth'.format(iteration))
                         print('Model saved to ./mars_triplet_{}.pth'.format(iteration))
 
-    # save model
-    torch.save(net.state_dict(), './mars_triplet.pth')
-    print('Model saved to ./mars_triplet.pth')
     print('Finished Training')
 
 if __name__ == '__main__':
     # hyperparams
-    max_iters = 100000
+    max_iters = 1000
     batch_size = 72
     minibatch_size = 8
     images_per_person = 4
@@ -224,5 +219,5 @@ if __name__ == '__main__':
     momentum = 0.9
 
     # train
-    train(max_iters, batch_size, minibatch_size, lr, momentum, './mars_triplet_ckpt.pth', './mars_triplet_ckpt.log')
+    train(max_iters, batch_size, minibatch_size, images_per_person, lr, momentum, './mars_triplet_ckpt.pth', './mars_triplet_ckpt.log')
     # train(max_iters, batch_size, minibatch_size, images_per_person, lr, momentum)
