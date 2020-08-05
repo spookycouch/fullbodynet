@@ -1,14 +1,13 @@
 import torch
+from .resnet import resnet50
 
-# facenet repurposed for people recognition
 class FullBodyNet(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, train=False):
         super(FullBodyNet, self).__init__()
-        inception_v3 = torch.hub.load('pytorch/vision:v0.6.0', 'inception_v3', pretrained=True)
-        inception_v3.fc = torch.nn.Linear(inception_v3.fc.in_features, 128)
-        self.inception_v3 = inception_v3
+        self.resnet50 = resnet50(pretrained=train)
+        self.resnet50.fc = torch.nn.Linear(self.resnet50.fc.in_features, 128)
 
-    # this just applies L2 norm to inception_v3
+    # this just applies L2 norm to resnet50
     def forward(self, x):
-        inception_outputs = self.inception_v3(x)
-        return inception_outputs[0]/torch.norm(inception_outputs[0], p=2), inception_outputs[1]
+        resnet_outputs = self.resnet50(x)
+        return resnet_outputs/torch.norm(resnet_outputs, p=2)
