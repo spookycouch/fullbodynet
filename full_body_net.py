@@ -10,4 +10,4 @@ class FullBodyNet(torch.nn.Module):
     # this just applies L2 norm to resnet50
     def forward(self, x):
         resnet_outputs = self.resnet50(x)
-        return resnet_outputs/torch.norm(resnet_outputs, p=2)
+        return resnet_outputs/torch.norm(resnet_outputs, p=2, dim=1, keepdim=True)

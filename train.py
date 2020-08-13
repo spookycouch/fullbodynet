@@ -56,7 +56,7 @@ def train(max_iters, batch_size, minibatch_size, images_per_person, lr, momentum
 
     # inception_v3
     # resize final layer for classes above
-    net = FullBodyNet()
+    net = FullBodyNet(train=True)
     if statepath is not None:
         print('Loading FullBodyNet state from {}'.format(statepath))
         net.load_state_dict(torch.load(statepath))
@@ -206,6 +206,9 @@ def train(max_iters, batch_size, minibatch_size, images_per_person, lr, momentum
                     if iteration % 500 == 0:
                         torch.save(net.state_dict(), './mars_triplet_{}.pth'.format(iteration))
                         print('Model saved to ./mars_triplet_{}.pth'.format(iteration))
+                    
+                    if iteration >= max_iters:
+                        break
 
     print('Finished Training')
 
